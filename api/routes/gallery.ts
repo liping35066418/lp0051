@@ -42,11 +42,12 @@ router.post('/', (req: Request, res: Response): void => {
   }
 
   const imagesValue = typeof images === 'string' ? images : JSON.stringify(images || [])
+  const isActiveInt = is_active === undefined ? 1 : (is_active ? 1 : 0)
 
   const result = db.prepare(`
     INSERT INTO gallery (title, category, images, photographer_id, package_id, description, is_active, sort_order)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(title, category || 'portrait', imagesValue, photographer_id, package_id || null, description || '', is_active ?? 1, sort_order || 0)
+  `).run(title, category || 'portrait', imagesValue, photographer_id, package_id || null, description || '', isActiveInt, sort_order || 0)
 
   const row = db.prepare('SELECT * FROM gallery WHERE id = ?').get(result.lastInsertRowid)
   res.json({ success: true, data: row })
@@ -74,6 +75,10 @@ router.put('/:id', (req: Request, res: Response): void => {
     ? (typeof images === 'string' ? images : JSON.stringify(images))
     : (existing as any).images
 
+  const isActiveInt = is_active === undefined
+    ? (existing as any).is_active
+    : (is_active ? 1 : 0)
+
   db.prepare(`
     UPDATE gallery SET
       title = ?, category = ?, images = ?, photographer_id = ?, package_id = ?,
@@ -86,7 +91,7 @@ router.put('/:id', (req: Request, res: Response): void => {
     photographer_id ?? (existing as any).photographer_id,
     package_id ?? (existing as any).package_id,
     description ?? (existing as any).description,
-    is_active ?? (existing as any).is_active,
+    isActiveInt,
     sort_order ?? (existing as any).sort_order,
     Number(req.params.id),
   )

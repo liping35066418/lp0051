@@ -27,12 +27,12 @@ export default defineConfig({
     port: 3711,
     proxy: {
       '/api': {
-        target: 'http://localhost:8711',
+        target: 'http://localhost:8712',
         changeOrigin: true,
         secure: false,
       },
       '/uploads': {
-        target: 'http://localhost:8711',
+        target: 'http://localhost:8712',
         changeOrigin: true,
       }
     }

@@ -16,6 +16,7 @@ import bookingRoutes from './routes/bookings.js'
 import orderRoutes from './routes/orders.js'
 import galleryRoutes from './routes/gallery.js'
 import statsRoutes from './routes/stats.js'
+import { uploadSingle } from './middleware/upload.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -37,6 +38,21 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
   const ip = req.ip || req.socket.remoteAddress || ''
   db.prepare('INSERT INTO visit_logs (page, ip) VALUES (?, ?)').run(page, ip)
   next()
+})
+
+app.post('/api/upload', (req: Request, res: Response): void => {
+  uploadSingle(req, res, (err: any) => {
+    if (err) {
+      res.status(400).json({ success: false, error: err.message })
+      return
+    }
+    if (!req.file) {
+      res.status(400).json({ success: false, error: '没有上传文件' })
+      return
+    }
+    const url = `/uploads/${req.file.filename}`
+    res.json({ success: true, data: { url } })
+  })
 })
 
 app.use('/api/packages', packageRoutes)

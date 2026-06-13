@@ -13,10 +13,14 @@ export default function GalleryDetail({ item, onClose }: { item: GalleryItem; on
   const images: string[] = item.images ? JSON.parse(item.images) : []
 
   useEffect(() => {
+    setCurrentImg(0)
+    setLiked(false)
+    setLikes(item.likes)
+    setPhotographer(null)
     if (item.photographer_id) {
       photographersApi.get(item.photographer_id).then(setPhotographer).catch(() => {})
     }
-  }, [item.photographer_id])
+  }, [item.id])
 
   const handleLike = async () => {
     try {

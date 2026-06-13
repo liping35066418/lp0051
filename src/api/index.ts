@@ -100,12 +100,14 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   return json.data as T
 }
 
-function uploadRequest<T>(url: string, formData: FormData): Promise<T> {
-  return request<T>(url, {
+async function uploadRequest<T>(url: string, formData: FormData): Promise<T> {
+  const res = await fetch(url, {
     method: 'POST',
-    headers: {} as Record<string, string>,
     body: formData,
   })
+  const json = await res.json()
+  if (!res.ok) throw new Error(json.error || '上传失败')
+  return json.data as T
 }
 
 export const packagesApi = {

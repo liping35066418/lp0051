@@ -58,7 +58,7 @@ export default function GalleryManage() {
     const uploaded: string[] = []
     for (let i = 0; i < files.length; i++) {
       const fd = new FormData()
-      fd.append('file', files[i])
+      fd.append('image', files[i])
       try {
         const res = await uploadRequest<{ url: string }>('/api/upload', fd)
         uploaded.push(res.url)
