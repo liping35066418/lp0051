@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express'
 import { getDb } from '../db/init.js'
+import { checkConflictMultiSlot, computeSlotsNeeded, computeConsecutiveSlots } from './bookings.js'
 
 const router = Router()
 
@@ -72,25 +73,27 @@ router.post('/:id/reschedule', (req: Request, res: Response): void => {
     return
   }
 
-  const bookingConflict = db.prepare(
-    "SELECT id FROM bookings WHERE photographer_id = ? AND booking_date = ? AND time_slot = ? AND status != 'conflict'"
-  ).get(existing.photographer_id, booking_date, time_slot)
-  if (bookingConflict) {
-    res.status(409).json({ success: false, error: '该时段已被预约，请选择其他时间' })
+  const pkg = db.prepare('SELECT duration_minutes FROM packages WHERE id = ?').get(existing.package_id) as any
+  const slotsNeeded = pkg ? computeSlotsNeeded(pkg.duration_minutes) : (existing.slots_needed || 1)
+
+  const slots = computeConsecutiveSlots(time_slot, slotsNeeded)
+  if (!slots) {
+    res.status(400).json({ success: false, error: '该起始时段无法安排连续的拍摄档期（可能跨越休息时间或超出营业时段）' })
     return
   }
 
-  const orderConflict = db.prepare(
-    "SELECT id FROM orders WHERE photographer_id = ? AND booking_date = ? AND time_slot = ? AND id != ? AND status NOT IN ('cancelled','reschedule_requested')"
-  ).get(existing.photographer_id, booking_date, time_slot, Number(req.params.id))
-  if (orderConflict) {
-    res.status(409).json({ success: false, error: '该时段已被预约，请选择其他时间' })
+  const conflict = checkConflictMultiSlot(
+    db, existing.photographer_id, booking_date, time_slot, slotsNeeded,
+    undefined, Number(req.params.id),
+  )
+  if (conflict.conflict) {
+    res.status(409).json({ success: false, error: conflict.message || '该时段已被预约，请选择其他时间' })
     return
   }
 
   db.prepare(`
-    UPDATE orders SET booking_date = ?, time_slot = ?, status = 'pending_confirm', updated_at = datetime('now','localtime') WHERE id = ?
-  `).run(booking_date, time_slot, Number(req.params.id))
+    UPDATE orders SET booking_date = ?, time_slot = ?, slots_needed = ?, status = 'pending_confirm', updated_at = datetime('now','localtime') WHERE id = ?
+  `).run(booking_date, time_slot, slotsNeeded, Number(req.params.id))
 
   const row = db.prepare('SELECT * FROM orders WHERE id = ?').get(Number(req.params.id))
   res.json({ success: true, data: row })

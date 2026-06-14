@@ -4,6 +4,7 @@ import { ArrowLeft, Calendar, Clock, Star, Image as ImageIcon } from 'lucide-rea
 import { ordersApi, packagesApi, photographersApi } from '@/api'
 import type { Order, Package, Photographer } from '@/api'
 import OrderTimeline from '@/components/OrderTimeline'
+import { formatSlotRange } from '@/lib/slots'
 
 const statusLabels: Record<string, string> = {
   pending_confirm: '待确认',
@@ -124,7 +125,7 @@ export default function OrderDetail() {
               </div>
               <div className="flex items-center gap-2">
                 <Clock size={14} className="text-brand-gold" />
-                <span>时段：{order.time_slot}</span>
+                <span>时段：{order.slots_needed > 1 ? formatSlotRange(order.time_slot, order.slots_needed) : order.time_slot}</span>
               </div>
               <p>套餐：{pkg?.name || '-'}</p>
               <p>摄影师：{photographer?.name || '-'}</p>

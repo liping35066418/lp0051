@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { ordersApi } from '@/api'
 import type { Order } from '@/api'
+import { formatSlotRange } from '@/lib/slots'
 
 const statusLabels: Record<string, string> = {
   pending_confirm: '待确认',
@@ -103,7 +104,7 @@ export default function OrderManage() {
                     <td className="p-4 text-brand-gray">{order.customer_name}</td>
                     <td className="p-4 text-brand-gray">{order.customer_phone}</td>
                     <td className="p-4 text-brand-gray">{order.booking_date}</td>
-                    <td className="p-4 text-brand-gray">{order.time_slot}</td>
+                    <td className="p-4 text-brand-gray">{order.slots_needed > 1 ? formatSlotRange(order.time_slot, order.slots_needed) : order.time_slot}</td>
                     <td className="p-4 text-brand-gold">¥{order.total_price.toLocaleString()}</td>
                     <td className="p-4">
                       <span className="text-xs px-2 py-0.5 rounded-full bg-brand-gold/10 text-brand-gold border border-brand-gold/20">

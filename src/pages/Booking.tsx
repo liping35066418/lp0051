@@ -1,16 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, Check, AlertCircle } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Check, AlertCircle, Clock } from 'lucide-react'
 import { packagesApi, photographersApi, bookingsApi } from '@/api'
-import type { Package, Photographer } from '@/api'
+import type { Package, Photographer, AvailabilityInfo } from '@/api'
 import { useBookingStore } from '@/store'
-
-const timeSlots = [
-  '09:00', '09:30', '10:00', '10:30',
-  '11:00', '11:30', '13:00', '13:30',
-  '14:00', '14:30', '15:00', '15:30',
-  '16:00', '16:30', '17:00', '17:30',
-]
+import { HOUR_SLOTS, BREAK_LABEL, computeSlotsNeeded, computeConsecutiveSlots, formatSlotRange } from '@/lib/slots'
 
 export default function Booking() {
   const [searchParams] = useSearchParams()
@@ -19,7 +13,7 @@ export default function Booking() {
 
   const [pkg, setPkg] = useState<Package | null>(null)
   const [photographers, setPhotographers] = useState<Photographer[]>([])
-  const [schedules, setSchedules] = useState<any[]>([])
+  const [availability, setAvailability] = useState<AvailabilityInfo | null>(null)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -34,17 +28,39 @@ export default function Booking() {
 
   useEffect(() => {
     if (store.photographerId && store.date) {
-      bookingsApi.check({ photographer_id: store.photographerId, date: store.date })
+      bookingsApi.check({
+        photographer_id: store.photographerId,
+        date: store.date,
+        package_id: store.packageId ?? undefined,
+      })
         .then((data) => {
-          setSchedules(data)
+          setAvailability(data)
         })
-        .catch(() => setSchedules([]))
+        .catch(() => setAvailability(null))
+    } else {
+      setAvailability(null)
     }
-  }, [store.photographerId, store.date])
+  }, [store.photographerId, store.date, store.packageId])
 
-  const occupiedSlots = schedules
-    .filter((s) => !s.available)
-    .map((s) => s.time_slot)
+  const slotsNeeded = useMemo(() => {
+    if (!pkg) return 1
+    return computeSlotsNeeded(pkg.duration_minutes)
+  }, [pkg])
+
+  const occupiedSlots = useMemo(() => {
+    if (!availability) return new Set<string>()
+    const set = new Set<string>()
+    availability.slots.filter(s => !s.available).forEach(s => set.add(s.time_slot))
+    return set
+  }, [availability])
+
+  const validStartTimes = availability?.validStartTimes ?? {}
+
+  const coOccupiedSlots = useMemo(() => {
+    if (!store.timeSlot || !validStartTimes[store.timeSlot]) return new Set<string>()
+    const info = validStartTimes[store.timeSlot]
+    return new Set(info.occupiedSlots.filter(s => s !== store.timeSlot))
+  }, [store.timeSlot, validStartTimes])
 
   const today = new Date().toISOString().split('T')[0]
 
@@ -55,6 +71,10 @@ export default function Booking() {
     }
     if (store.step === 2 && (!store.date || !store.timeSlot)) {
       setError('请选择日期和时段')
+      return
+    }
+    if (store.step === 2 && store.timeSlot && validStartTimes[store.timeSlot] && !validStartTimes[store.timeSlot].valid) {
+      setError(validStartTimes[store.timeSlot].reason || '该时段不可选')
       return
     }
     setError('')
@@ -97,6 +117,15 @@ export default function Booking() {
     <div className="min-h-screen pt-24 pb-16 px-6">
       <div className="container mx-auto max-w-3xl">
         <h1 className="font-display text-3xl text-brand-ivory mb-8 text-center">在线预约</h1>
+
+        {pkg && (
+          <div className="mb-6 p-3 rounded-lg bg-brand-gold/5 border border-brand-gold/10 flex items-center gap-2 text-sm">
+            <Clock size={14} className="text-brand-gold shrink-0" />
+            <span className="text-brand-gray">
+              套餐「{pkg.name}」拍摄时长 {pkg.duration_minutes} 分钟，需占用 <span className="text-brand-gold font-medium">{slotsNeeded}</span> 个连续档期（每档 1 小时）
+            </span>
+          </div>
+        )}
 
         <div className="flex items-center justify-center gap-4 mb-10">
           {[1, 2, 3].map((s) => (
@@ -174,28 +203,64 @@ export default function Booking() {
             </div>
             {store.date && (
               <div>
-                <label className="text-brand-ivory text-sm font-medium mb-2 block">选择时段</label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-brand-ivory text-sm font-medium">选择起始时段</label>
+                  {slotsNeeded > 1 && (
+                    <span className="text-xs text-brand-gold/70">需连续 {slotsNeeded} 个档</span>
+                  )}
+                </div>
                 <div className="grid grid-cols-4 gap-2">
-                  {timeSlots.map((slot) => {
-                    const occupied = occupiedSlots.includes(slot)
+                  {HOUR_SLOTS.map((slot, idx) => {
+                    const info = validStartTimes[slot]
+                    const isOccupied = occupiedSlots.has(slot)
+                    const isInvalid = info && !info.valid
+                    const isSelected = store.timeSlot === slot
+                    const isCoOccupied = coOccupiedSlots.has(slot)
+                    const isBreak = idx > 0 && HOUR_SLOTS[idx - 1] === '11:00'
+
+                    let disabled = false
+                    let tooltip = ''
+                    if (isOccupied) { disabled = true; tooltip = '已被预约' }
+                    else if (isInvalid) { disabled = true; tooltip = info?.reason || '不可选' }
+                    else if (!info) { disabled = true; tooltip = '未开放' }
+
                     return (
-                      <button
-                        key={slot}
-                        disabled={occupied}
-                        onClick={() => { store.setTimeSlot(slot); setError('') }}
-                        className={`py-2 rounded-lg text-sm font-medium transition-colors ${
-                          occupied
-                            ? 'bg-brand-gray/10 text-brand-gray/40 cursor-not-allowed line-through'
-                            : store.timeSlot === slot
-                              ? 'bg-brand-gold text-brand-dark'
-                              : 'bg-brand-gold/10 text-brand-ivory/70 hover:bg-brand-gold/20 border border-brand-gold/20'
-                        }`}
-                      >
-                        {slot}
-                      </button>
+                      <div key={slot}>
+                        {isBreak && (
+                          <div className="col-span-4 text-center text-xs text-brand-gray/40 py-1 border-t border-brand-gold/5 mt-1 mb-1">
+                            {BREAK_LABEL}
+                          </div>
+                        )}
+                        <button
+                          disabled={disabled}
+                          onClick={() => { store.setTimeSlot(slot); setError('') }}
+                          title={tooltip}
+                          className={`w-full py-2 rounded-lg text-sm font-medium transition-colors relative ${
+                            disabled
+                              ? 'bg-brand-gray/10 text-brand-gray/40 cursor-not-allowed line-through'
+                              : isCoOccupied
+                                ? 'bg-brand-gold/20 text-brand-gold/70 border border-brand-gold/30 border-dashed'
+                                : isSelected
+                                  ? 'bg-brand-gold text-brand-dark'
+                                  : 'bg-brand-gold/10 text-brand-ivory/70 hover:bg-brand-gold/20 border border-brand-gold/20'
+                          }`}
+                        >
+                          {slot}
+                          {isCoOccupied && !disabled && (
+                            <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-brand-gold/50 rounded-full flex items-center justify-center">
+                              <span className="text-[8px] text-brand-dark">+</span>
+                            </span>
+                          )}
+                        </button>
+                      </div>
                     )
                   })}
                 </div>
+                {store.timeSlot && slotsNeeded > 1 && validStartTimes[store.timeSlot]?.valid && (
+                  <p className="mt-3 text-xs text-brand-gold/70">
+                    将占用时段：{formatSlotRange(store.timeSlot, slotsNeeded)}（共 {slotsNeeded} 个档）
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -208,7 +273,12 @@ export default function Booking() {
                 <p>套餐：<span className="text-brand-ivory">{pkg?.name || '未选择'}</span></p>
                 <p>摄影师：<span className="text-brand-ivory">{selectedPhotographer?.name || '未选择'}</span></p>
                 <p>日期：<span className="text-brand-ivory">{store.date}</span></p>
-                <p>时段：<span className="text-brand-ivory">{store.timeSlot}</span></p>
+                <p>时段：<span className="text-brand-ivory">
+                  {slotsNeeded > 1 ? formatSlotRange(store.timeSlot, slotsNeeded) : store.timeSlot}
+                </span></p>
+                {slotsNeeded > 1 && (
+                  <p className="text-brand-gold/70">占用 {slotsNeeded} 个连续档期</p>
+                )}
               </div>
             </div>
             <div>

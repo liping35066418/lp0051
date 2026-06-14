@@ -41,6 +41,7 @@ export interface Booking {
   customer_phone: string
   booking_date: string
   time_slot: string
+  slots_needed: number
   notes: string
   status: 'pending' | 'confirmed' | 'conflict'
   created_at: string
@@ -55,6 +56,7 @@ export interface Order {
   customer_phone: string
   booking_date: string
   time_slot: string
+  slots_needed: number
   status: 'pending_confirm' | 'shooting' | 'delivered' | 'completed' | 'reschedule_requested' | 'cancel_requested' | 'cancelled'
   total_price: number
   notes: string
@@ -144,11 +146,23 @@ export const schedulesApi = {
     request<Schedule>(`/api/schedules/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 }
 
+export interface AvailabilityInfo {
+  slots: { id: number; photographer_id: number; date: string; time_slot: string; is_available: boolean; available: boolean }[]
+  validStartTimes: Record<string, { valid: boolean; occupiedSlots: string[]; reason?: string }>
+  slotsNeeded: number
+}
+
 export const bookingsApi = {
   create: (data: Partial<Booking>) =>
     request<Booking>('/api/bookings', { method: 'POST', body: JSON.stringify(data) }),
-  check: (params: { photographer_id: number; date: string }) =>
-    request<{ available: boolean }[]>(`/api/bookings/availability?photographer_id=${params.photographer_id}&date=${params.date}`),
+  check: (params: { photographer_id: number; date: string; package_id?: number }) => {
+    const qs = new URLSearchParams({
+      photographer_id: String(params.photographer_id),
+      date: params.date,
+    })
+    if (params.package_id) qs.set('package_id', String(params.package_id))
+    return request<AvailabilityInfo>(`/api/bookings/availability?${qs.toString()}`)
+  },
 }
 
 export const ordersApi = {
@@ -188,10 +202,25 @@ export const galleryApi = {
     request<GalleryItem>(`/api/gallery/${id}/like`, { method: 'POST' }),
 }
 
+export interface UtilizationInfo {
+  photographer_id: number
+  photographer_name: string
+  date: string
+  available_slots: number
+  occupied_slots: number
+  occupied_details: string[]
+  utilization_rate: number
+}
+
 export const statsApi = {
   overview: () => request<Stats>('/api/stats/overview'),
   visits: () => request<{ daily: { date: string; count: number }[] }>('/api/stats/visits'),
   revenue: () => request<{ monthly: { month: string; revenue: number }[] }>('/api/stats/revenue'),
+  utilization: (date: string, photographerId?: number) => {
+    const qs = new URLSearchParams({ date })
+    if (photographerId) qs.set('photographer_id', String(photographerId))
+    return request<UtilizationInfo[]>(`/api/stats/utilization?${qs.toString()}`)
+  },
 }
 
 export { uploadRequest }

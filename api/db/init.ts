@@ -74,6 +74,7 @@ function initTables(db: Database.Database): void {
       customer_phone TEXT NOT NULL,
       booking_date TEXT NOT NULL,
       time_slot TEXT NOT NULL,
+      slots_needed INTEGER NOT NULL DEFAULT 1,
       notes TEXT DEFAULT '',
       status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','confirmed','conflict')),
       created_at TEXT DEFAULT (datetime('now','localtime')),
@@ -90,6 +91,7 @@ function initTables(db: Database.Database): void {
       customer_phone TEXT NOT NULL,
       booking_date TEXT NOT NULL,
       time_slot TEXT NOT NULL,
+      slots_needed INTEGER NOT NULL DEFAULT 1,
       status TEXT NOT NULL DEFAULT 'pending_confirm' CHECK(status IN ('pending_confirm','shooting','delivered','completed','reschedule_requested','cancel_requested','cancelled')),
       total_price REAL NOT NULL DEFAULT 0,
       notes TEXT DEFAULT '',
@@ -139,4 +141,17 @@ function initTables(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_gallery_is_active ON gallery(is_active);
     CREATE INDEX IF NOT EXISTS idx_visit_logs_visited_at ON visit_logs(visited_at);
   `)
+
+  migrateSlotsNeeded(db)
+}
+
+function migrateSlotsNeeded(db: Database.Database): void {
+  const bookingsCols = db.prepare("PRAGMA table_info(bookings)").all() as any[]
+  if (!bookingsCols.find(c => c.name === 'slots_needed')) {
+    db.exec("ALTER TABLE bookings ADD COLUMN slots_needed INTEGER NOT NULL DEFAULT 1")
+  }
+  const ordersCols = db.prepare("PRAGMA table_info(orders)").all() as any[]
+  if (!ordersCols.find(c => c.name === 'slots_needed')) {
+    db.exec("ALTER TABLE orders ADD COLUMN slots_needed INTEGER NOT NULL DEFAULT 1")
+  }
 }
